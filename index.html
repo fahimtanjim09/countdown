@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Countdown Timer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="count.js">
+</head>
+<body>
+    <div class="container">
+        <h1>Countdown Timer</h1>
+        
+        <div class="input-group">
+            <div class="input-field">
+                <label for="hours">Hours</label>
+                <input type="number" id="hours" min="0" max="23" placeholder="00">
+            </div>
+            <div class="input-field">
+                <label for="minutes">Minutes</label>
+                <input type="number" id="minutes" min="0" max="59" placeholder="00">
+            </div>
+            <div class="input-field">
+                <label for="seconds">Seconds</label>
+                <input type="number" id="seconds" min="0" max="59" placeholder="00">
+            </div>
+        </div>
+        
+        <div class="alarm-controls">
+            <div class="alarm-label">Alarm Sound:</div>
+            <label class="alarm-toggle">
+                <input type="checkbox" id="alarmToggle" checked>
+                <span class="slider"></span>
+            </label>
+            <button class="test-alarm-btn" id="testAlarmBtn">Test</button>
+        </div>
+        
+        <div class="button-group">
+            <button class="start-btn" id="startBtn">Start</button>
+            <button class="stop-btn" id="stopBtn">Stop</button>
+            <button class="reset-btn" id="resetBtn">Reset</button>
+        </div>
+        
+        <div class="progress-ring">
+            <svg width="200" height="200">
+                <circle class="progress-ring-circle" cx="100" cy="100" r="90"></circle>
+                <circle class="progress-ring-circle progress-ring-circle-active" id="progressCircle" cx="100" cy="100" r="90"></circle>
+            </svg>
+        </div>
+        
+        <div class="display">
+            <div class="time-display" id="timeDisplay">00:00:00</div>
+        </div>
+        
+        <div class="message" id="message"></div>
+    </div>
+    
+    <div class="notification" id="notification">Time's up!</div>
+
+    <script>
+        
+        // DOM Elements
+        const hoursInput = document.getElementById('hours');
+        const minutesInput = document.getElementById('minutes');
+        const secondsInput = document.getElementById('seconds');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const messageEl = document.getElementById('message');
+        const notification = document.getElementById('notification');
+        const progressCircle = document.getElementById('progressCircle');
+        const alarmToggle = document.getElementById('alarmToggle');
+        const testAlarmBtn = document.getElementById('testAlarmBtn');
+        
+        // Timer variables
+        let countdown;
+        let totalSeconds = 0;
+        let remainingSeconds = 0;
+        let isRunning = false;
+        
+        // Audio variables
+        let audioContext;
+        let alarmOscillator;
+        let alarmGainNode;
+        let isAlarmPlaying = false;
+        
+        // Progress ring setup
+        const radius = 90;
+        const circumference = 2 * Math.PI * radius;
+        progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+        progressCircle.style.strokeDashoffset = circumference;
+        
+        // Event listeners
+        startBtn.addEventListener('click', startTimer);
+        stopBtn.addEventListener('click', stopTimer);
+        resetBtn.addEventListener('click', resetTimer);
+        testAlarmBtn.addEventListener('click', testAlarm);
+        
+        // Initialize audio context on first user interaction
+        document.addEventListener('click', initAudioContext, { once: true });
+        document.addEventListener('touchstart', initAudioContext, { once: true });
+        
+        // Initialize display
+        updateDisplay();
+        
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function startTimer() {
+            if (isRunning) return;
+            
+            const hours = parseInt(hoursInput.value) || 0;
+            const minutes = parseInt(minutesInput.value) || 0;
+            const seconds = parseInt(secondsInput.value) || 0;
+            
+            if (hours === 0 && minutes === 0 && seconds === 0) {
+                showMessage("Please enter a valid time");
+                return;
+            }
+            
+            if (remainingSeconds === 0) {
+                totalSeconds = hours * 3600 + minutes * 60 + seconds;
+                remainingSeconds = totalSeconds;
+            }
+            
+            isRunning = true;
+            startBtn.disabled = true;
+            hoursInput.disabled = true;
+            minutesInput.disabled = true;
+            secondsInput.disabled = true;
+            messageEl.textContent = "";
+            
+            updateProgress();
+            
+            countdown = setInterval(() => {
+                remainingSeconds--;
+                updateDisplay();
+                updateProgress();
+                
+                if (remainingSeconds <= 0) {
+                    completeTimer();
+                }
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            if (!isRunning) return;
+            
+            clearInterval(countdown);
+            isRunning = false;
+            startBtn.disabled = false;
+            hoursInput.disabled = false;
+            minutesInput.disabled = false;
+            secondsInput.disabled = false;
+            messageEl.textContent = "Timer paused";
+        }
+        
+        function resetTimer() {
+            clearInterval(countdown);
+            isRunning = false;
+            remainingSeconds = 0;
+            totalSeconds = 0;
+            startBtn.disabled = false;
+            hoursInput.disabled = false;
+            minutesInput.disabled = false;
+            secondsInput.disabled = false;
+            hoursInput.value = "";
+            minutesInput.value = "";
+            secondsInput.value = "";
+            messageEl.textContent = "";
+            updateDisplay();
+            resetProgress();
+            stopAlarm();
+        }
+        
+        function completeTimer() {
+            clearInterval(countdown);
+            isRunning = false;
+            remainingSeconds = 0;
+            startBtn.disabled = false;
+            hoursInput.disabled = false;
+            minutesInput.disabled = false;
+            secondsInput.disabled = false;
+            messageEl.textContent = "Time's up!";
+            showNotification();
+            resetProgress();
+            
+            // Play alarm if enabled
+            if (alarmToggle.checked) {
+                playAlarm();
+            }
+            
+            // Vibrate if supported
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+            }
+        }
+        
+        function updateDisplay() {
+            const hours = Math.floor(remainingSeconds / 3600);
+            const minutes = Math.floor((remainingSeconds % 3600) / 60);
+            const secs = remainingSeconds % 60;
+            timeDisplay.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function updateProgress() {
+            const progress = remainingSeconds / totalSeconds;
+            const offset = circumference - (progress * circumference);
+            progressCircle.style.strokeDashoffset = offset;
+        }
+        
+        function resetProgress() {
+            progressCircle.style.strokeDashoffset = circumference;
+        }
+        
+        function showMessage(msg) {
+            messageEl.textContent = msg;
+            setTimeout(() => {
+                messageEl.textContent = "";
+            }, 3000);
+        }
+        
+        function showNotification() {
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Alarm functions
+        function playAlarm() {
+            if (!audioContext || isAlarmPlaying) return;
+            
+            isAlarmPlaying = true;
+            
+            // Create oscillator for beep sound
+            alarmOscillator = audioContext.createOscillator();
+            alarmGainNode = audioContext.createGain();
+            
+            alarmOscillator.connect(alarmGainNode);
+            alarmGainNode.connect(audioContext.destination);
+            
+            alarmOscillator.type = 'sine';
+            alarmOscillator.frequency.value = 880; // A5 note
+            alarmGainNode.gain.value = 0.5;
+            
+            // Start the oscillator
+            alarmOscillator.start();
+            
+            // Create a beeping pattern
+            let beepCount = 0;
+            const maxBeeps = 10;
+            const beepInterval = setInterval(() => {
+                if (beepCount >= maxBeeps) {
+                    clearInterval(beepInterval);
+                    stopAlarm();
+                    return;
+                }
+                
+                if (beepCount % 2 === 0) {
+                    alarmGainNode.gain.value = 0.5; // Beep on
+                } else {
+                    alarmGainNode.gain.value = 0; // Beep off
+                }
+                
+                beepCount++;
+            }, 500);
+        }
+        
+        function stopAlarm() {
+            if (alarmOscillator) {
+                alarmOscillator.stop();
+                alarmOscillator = null;
+            }
+            isAlarmPlaying = false;
+        }
+        
+        function testAlarm() {
+            if (alarmToggle.checked) {
+                playAlarm();
+                setTimeout(() => {
+                    stopAlarm();
+                }, 3000);
+            } else {
+                showMessage("Enable alarm to test");
+            }
+        }
+        
+        // Prevent zooming on input focus
+        document.addEventListener('focus', function(e) {
+            if (e.target.matches('input')) {
+                document.body.style.zoom = '1';
+            }
+        }, true);
+    </script>
+
+    
+</body>
+</html>
